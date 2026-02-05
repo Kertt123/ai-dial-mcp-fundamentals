@@ -1,8 +1,8 @@
 import asyncio
-import json
 import os
 
 from mcp import Resource
+from mcp.client.stdio import StdioServerParameters
 from mcp.types import Prompt
 
 from agent.mcp_client import MCPClient
@@ -11,18 +11,28 @@ from agent.models.message import Message, Role
 from agent.prompts import SYSTEM_PROMPT
 
 
-# https://remote.mcpservers.org/fetch/mcp
-# Pay attention that `fetch` doesn't have resources and prompts
-DIAL_ENDPOINT = "https://ai-proxy.lab.epam.com"
-API_KEY = os.getenv('DIAL_API_KEY')
+DUCKDUCKGO_IMAGE = os.getenv("MCP_STDIO_IMAGE", "mcp/duckduckgo:latest")
+STDIO_SERVER = StdioServerParameters(
+    command=os.getenv("MCP_STDIO_COMMAND", "docker"),
+    args=[
+        "run",
+        "--rm",
+        "-i",
+        DUCKDUCKGO_IMAGE,
+    ],
+)
+
+DIAL_ENDPOINT = os.getenv("DIAL_ENDPOINT", "https://ai-proxy.lab.epam.com")
+API_KEY = os.getenv("DIAL_API_KEY")
+
 
 async def main():
     api_key = API_KEY
     endpoint = DIAL_ENDPOINT
     if not api_key or not endpoint:
-        raise RuntimeError("AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT must be set")
+        raise RuntimeError("DIAL_API_KEY and DIAL_ENDPOINT must be set")
 
-    async with MCPClient("http://localhost:8005/mcp") as mcp_client:
+    async with MCPClient(STDIO_SERVER) as mcp_client:
         resources: list[Resource] = await mcp_client.get_resources()
         if resources:
             print("🔗 MCP Resources:")

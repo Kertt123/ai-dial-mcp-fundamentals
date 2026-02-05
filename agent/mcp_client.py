@@ -1,23 +1,41 @@
 from typing import Optional, Any
 
 from mcp import ClientSession
-from mcp.client.streamable_http import streamablehttp_client
-from mcp.types import CallToolResult, TextContent, GetPromptResult, ReadResourceResult, Resource, TextResourceContents, BlobResourceContents, Prompt
+from mcp.client.stdio import stdio_client, StdioServerParameters
+from mcp.types import (
+    CallToolResult,
+    TextContent,
+    GetPromptResult,
+    ReadResourceResult,
+    Resource,
+    TextResourceContents,
+    BlobResourceContents,
+    Prompt,
+)
 from pydantic import AnyUrl
 
 
 class MCPClient:
     """Handles MCP server connection and tool execution"""
 
-    def __init__(self, mcp_server_url: str) -> None:
-        self.mcp_server_url = mcp_server_url
+    def __init__(self, server_parameters: StdioServerParameters) -> None:
+        self.server_parameters = server_parameters
         self.session: Optional[ClientSession] = None
-        self._streams_context = None
+        self._stdio_context = None
         self._session_context = None
 
     async def __aenter__(self):
-        self._streams_context = streamablehttp_client(self.mcp_server_url)
-        read_stream, write_stream, _ = await self._streams_context.__aenter__()
+        self._stdio_context = stdio_client(self.server_parameters)
+        streams = await self._stdio_context.__aenter__()
+        if isinstance(streams, tuple):
+            if len(streams) == 3:
+                read_stream, write_stream, _ = streams
+            elif len(streams) == 2:
+                read_stream, write_stream = streams
+            else:
+                raise RuntimeError("Unexpected stdio_client return value")
+        else:
+            read_stream, write_stream = streams
         self._session_context = ClientSession(read_stream, write_stream)
         self.session = await self._session_context.__aenter__()
         capabilities = await self.session.initialize()
@@ -32,9 +50,9 @@ class MCPClient:
             self.session = None
             self._session_context = None
 
-        if self._streams_context is not None:
-            await self._streams_context.__aexit__(exc_type, exc_val, exc_tb)
-            self._streams_context = None
+        if self._stdio_context is not None:
+            await self._stdio_context.__aexit__(exc_type, exc_val, exc_tb)
+            self._stdio_context = None
 
     async def get_tools(self) -> list[dict[str, Any]]:
         """Get available tools from MCP server"""
