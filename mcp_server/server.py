@@ -2,55 +2,69 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
-from models.user_info import UserSearchRequest, UserCreate, UserUpdate
+from models.user_info import UserCreate, UserUpdate
 from user_client import UserClient
 
-#TODO:
-# 1. Create instance of FastMCP as `mcp` (or another name if you wish) with:
-#       - name is "users-management-mcp-server",
-#       - host is "0.0.0.0",
-#       - port is 8005,
-# 2. Create UserClient
+mcp = FastMCP(
+    name="users-management-mcp-server",
+    host="0.0.0.0",
+    port=8005,
+)
+
+user_client = UserClient()
 
 
-# ==================== TOOLS ====================
-#TODO:
-# You need to add all the tools here. You will need to create 5 async methods and mark them as @mcp.tool() (if you
-# named FastMCP not as `mcp` then use the name that you have used). All tools return `str`.
-# Don't forget about tool description, it will LLM to identify when some particular tool should be used.
-# https://gofastmcp.com/servers/tools
-# ---
-# Tools:
-# 1. `get_user_by_id`:-
-# 2. `delete_user`:-
-# 3. `search_user`:-
-# 4. `add_user`:-
-# 5. `update_user`:-
-
-# ==================== MCP RESOURCES ====================
-
-#TODO:
-# Provides screenshot with Swagger endpoints of User Service. We need for the case to show you that MCP servers can
-# provide some static resources.
-# https://gofastmcp.com/servers/resources
-# ---
-# 1. Create async method `get_flow_diagram` that returns bytes and mark as `@mcp.resource` with:
-#   - uri = "users-management://flow-diagram"
-#   - mime_type="image/png"
-# 2. You need to get `flow.png` picture from `mcp_server` folder and return it as bytes.
-# 3. Don't forget to provide resource description
+@mcp.tool(name="get_user_by_id", description="Retrieves user details by identifier.")
+async def get_user_by_id(user_id: int) -> str:
+    return await user_client.get_user(user_id=user_id)
 
 
-# ==================== MCP PROMPTS ====================
+@mcp.tool(name="delete_user", description="Deletes a user for the provided identifier.")
+async def delete_user(user_id: int) -> str:
+    return await user_client.delete_user(user_id=user_id)
 
-#TODO:
-# Provides static prompts that can be used by Clients
-# https://gofastmcp.com/servers/prompts
-# ---
-# Prompts are prepared, you need just properly return them and provide descriptions of them"
 
-# Helps users formulate effective search queries
-"""
+@mcp.tool(
+    name="search_user",
+    description="Searches users by first name, last name, email, or gender.",
+)
+async def search_user(
+    name: str | None = None,
+    surname: str | None = None,
+    email: str | None = None,
+    gender: str | None = None,
+) -> str:
+    return await user_client.search_users(
+        name=name,
+        surname=surname,
+        email=email,
+        gender=gender,
+    )
+
+
+@mcp.tool(name="add_user", description="Creates a new user with the supplied payload.")
+async def add_user(user: UserCreate) -> str:
+    return await user_client.add_user(user_create_model=user)
+
+
+@mcp.tool(name="update_user", description="Updates an existing user using the provided payload.")
+async def update_user(user_id: int, payload: UserUpdate) -> str:
+    return await user_client.update_user(user_id=user_id, user_update_model=payload)
+
+
+@mcp.resource(
+    uri="users-management://flow-diagram",
+    description="Static diagram of the user-service request flow.",
+    mime_type="image/png",
+)
+async def get_flow_diagram() -> bytes:
+    flow_path = Path(__file__).with_name("flow.png")
+    if not flow_path.exists():
+        raise FileNotFoundError("flow.png resource is missing")
+    return flow_path.read_bytes()
+
+
+SEARCH_ASSIST_PROMPT = """
 You are helping users search through a dynamic user database. The database contains 
 realistic synthetic user profiles with the following searchable fields:
 
@@ -98,11 +112,10 @@ realistic synthetic user profiles with the following searchable fields:
 
 When helping users search, suggest multiple search strategies and explain 
 why certain approaches might be more effective for their goals.
-"""
+""".strip()
 
 
-# Guides creation of realistic user profiles
-"""
+PROFILE_CREATION_PROMPT = """
 You are helping create realistic user profiles for the system. Follow these guidelines 
 to ensure data consistency and realism.
 
@@ -171,10 +184,24 @@ When creating profiles, aim for diversity in:
 - Interest variety
 - Socioeconomic backgrounds
 - Cultural backgrounds
-"""
+""".strip()
+
+
+@mcp.prompt(
+    name="search-strategy-helper",
+    description="Helps formulate effective user search queries.",
+)
+async def search_strategy_helper() -> str:
+    return SEARCH_ASSIST_PROMPT
+
+
+@mcp.prompt(
+    name="profile-creation-guide",
+    description="Guides the creation of realistic user profiles.",
+)
+async def profile_creation_guide() -> str:
+    return PROFILE_CREATION_PROMPT
 
 
 if __name__ == "__main__":
-    #TODO:
-    # Run server with `transport="streamable-http"`
-    raise NotImplementedError()
+    mcp.run(transport="streamable-http")
